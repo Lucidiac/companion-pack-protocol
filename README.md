@@ -119,6 +119,116 @@ Game packs run in sandboxed iframes with limited capabilities:
 - ❌ Cannot access localStorage
 - ❌ Cannot access Electron APIs
 
+## Releasing a Gamepack
+
+Game packs use GitHub Actions to automatically build and publish releases. Here's the workflow:
+
+### 1. Set Up GitHub Actions
+
+Create `.github/workflows/release.yml` in your pack repo:
+
+```yaml
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build-daemon:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: daemon-darwin-arm64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: daemon-darwin-x64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: daemon-linux-x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: daemon-win32-x64.exe
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: cargo build --release --target ${{ matrix.target }}
+        working-directory: daemon
+      - run: mv daemon/target/${{ matrix.target }}/release/daemon* ${{ matrix.artifact }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: pnpm install && pnpm build
+        working-directory: frontend
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend
+          path: frontend/dist/frontend.js
+
+  release:
+    needs: [build-daemon, build-frontend]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - run: |
+          mkdir release && find artifacts -type f -exec mv {} release/ \;
+          cd release && sha256sum * > checksums.txt
+      - uses: softprops/action-gh-release@v1
+        with:
+          files: release/*
+          generate_release_notes: true
+```
+
+### 2. Release Workflow
+
+```bash
+# Make changes and commit
+git add -A && git commit -m "feat: your changes"
+
+# Update version in config.json
+# "version": "0.2.0"
+git add config.json && git commit -m "chore: bump version to 0.2.0"
+
+# Create and push tag (triggers CI)
+git tag v0.2.0
+git push && git push --tags
+
+# Update packs-index with new version
+cd ~/Projects/packs-index
+# Edit index.json: "version": "0.2.0"
+git add -A && git commit -m "chore: update pack to v0.2.0"
+git push
+```
+
+### 3. How Updates Work
+
+1. Main app fetches `packs-index` to get available packs and versions
+2. Compares `installed.version` vs `index.version`
+3. Shows "Update" button when versions differ
+4. Update reinstalls pack from GitHub release artifacts
+
 ## License
 
 MIT
