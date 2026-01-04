@@ -2,6 +2,35 @@
 
 TypeScript types and utilities for building Clip Companion game packs.
 
+## Data Model
+
+Game packs emit three types of data to the daemon:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    GAMEPACK OUTPUTS                                 │
+├─────────────────────┬─────────────────────┬─────────────────────────┤
+│       EVENTS        │     STATISTICS      │       MOMENTS           │
+│   (GameEvent)       │   (get_live_data)   │      (Moment)           │
+│                     │                     │                         │
+│  Discrete           │  Continuous         │  "Something             │
+│  occurrences        │  polled state       │  interesting!"          │
+│                     │                     │                         │
+│  • ChampionKill     │  • KDA              │  • pentakill            │
+│  • DragonKill       │  • Gold             │  • baron_steal          │
+│  • Ace              │  • CS               │  • big_purchase         │
+└─────────────────────┴─────────────────────┴─────────────────────────┘
+```
+
+| Concept | Type | Description |
+|---------|------|-------------|
+| **Event** | `GameEvent` | Discrete occurrence from the game API |
+| **Statistics** | JSON via `get_live_data()` | Polled game state |
+| **Moment** | `Moment` | Gamepack signals "something interesting!" |
+| **Trigger** | (daemon-managed) | User config for recording moments |
+
+**Key principle**: Your gamepack decides what's interesting (moments). The user decides what gets recorded (triggers).
+
 ## Installation
 
 ```bash
@@ -81,15 +110,19 @@ export default defineConfig({
 
 ### Types
 
+**Core Pack Types**
+- `GamePack<T>` - Interface packs must implement
 - `BaseMatch` - Base match type all packs extend
 - `MatchCardProps<T>` - Props for match card components
 - `LiveMatchCardProps<T>` - Props for live match components
-- `GamePack<T>` - Interface packs must implement
-- `PackCacheAPI` - Sandboxed cache interface
 - `PackContext` - Context provided to packs
-- `GameEvent` - Game event for clip triggers
+- `PackCacheAPI` - Sandboxed cache interface
+
+**Data Model Types**
+- `GameEvent` - Discrete game event (kills, objectives)
+- `Moment` - "Something interesting happened!" signal
 - `GameStatus` - Game connection status
-- `MatchData` - End-of-match data
+- `MatchData` - End-of-match summary data (Summary category)
 
 ### Hooks
 
