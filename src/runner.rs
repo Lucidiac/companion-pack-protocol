@@ -1,12 +1,54 @@
 //! Main loop runner for gamepacks.
 
 use std::io::{BufRead, Write};
+use std::sync::Mutex;
 
 use crate::commands::GamepackCommand;
 use crate::handler::GamepackHandler;
 use crate::responses::GamepackResponse;
-use crate::types::InitResponse;
+use crate::types::{InitResponse, MatchDataMessage};
 use crate::version::PROTOCOL_VERSION;
+
+/// Global stdout lock for thread-safe message emission.
+/// This is used by `emit_match_data` to send unsolicited messages.
+static STDOUT_LOCK: Mutex<()> = Mutex::new(());
+
+/// Emit a match data message to the daemon (unsolicited).
+///
+/// This function can be called from any thread to send match data updates
+/// to the daemon. Messages are thread-safe and will be properly interleaved
+/// with command responses.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use companion_pack_protocol::{emit_match_data, MatchDataMessage};
+/// use std::collections::HashMap;
+///
+/// // Emit stats during gameplay
+/// emit_match_data(MatchDataMessage::write_stats(
+///     0,  // subpack 0 for main game
+///     "match123",
+///     HashMap::from([("kills".to_string(), json!(5))]),
+/// ));
+///
+/// // Mark match as complete
+/// emit_match_data(MatchDataMessage::set_complete(
+///     0,
+///     "match123",
+///     "api",
+/// ));
+/// ```
+pub fn emit_match_data(message: MatchDataMessage) {
+    let response = GamepackResponse::WriteMatchData { message };
+
+    if let Ok(json) = serde_json::to_string(&response) {
+        let _lock = STDOUT_LOCK.lock();
+        let mut stdout = std::io::stdout();
+        let _ = writeln!(stdout, "{}", json);
+        let _ = stdout.flush();
+    }
+}
 
 /// Run the gamepack main loop with the provided handler.
 ///
