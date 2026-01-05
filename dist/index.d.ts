@@ -12,11 +12,16 @@ import 'vite';
 /**
  * Base match type that all game packs extend.
  * Contains only fields common to all games.
+ *
+ * Game-specific data is stored in the `details` field as an opaque JSON object.
+ * Each pack defines its own details interface and is responsible for parsing it.
  */
-interface BaseMatch {
+interface BaseMatch<TDetails = Record<string, unknown>> {
     /** Unique match identifier */
     id: string;
-    /** Game ID this match belongs to */
+    /** Pack UUID (stable internal identifier) */
+    packId?: string;
+    /** Game ID this match belongs to (for backwards compatibility) */
     gameId: number;
     /** ISO timestamp of when the match was played */
     playedAt: string;
@@ -26,6 +31,12 @@ interface BaseMatch {
     result: "win" | "loss" | "remake";
     /** ISO timestamp of when this record was created */
     createdAt: string;
+    /**
+     * Game-specific match details.
+     * Each pack defines its own details schema and is responsible for rendering it.
+     * The main application treats this as an opaque JSON blob.
+     */
+    details: TDetails;
 }
 /**
  * Props for match card components.
@@ -121,7 +132,9 @@ interface PackCacheAPI {
  * This is the sandboxed environment packs operate within.
  */
 interface PackContext {
-    /** Game ID this pack is registered for */
+    /** Pack UUID (stable internal identifier) */
+    packId: string;
+    /** Game ID this pack is registered for (for backwards compatibility) */
     gameId: number;
     /** Cache API for storing game-specific data */
     cache: PackCacheAPI;
@@ -149,7 +162,9 @@ interface GamePackUtilities {
  * Provides components and utilities specific to that game.
  */
 interface GamePack<TMatch extends BaseMatch = BaseMatch, TLiveMatch = unknown> {
-    /** Static game ID (must be unique across all packs) */
+    /** Pack UUID (stable internal identifier) */
+    packId: string;
+    /** Static game ID (for backwards compatibility) */
     gameId: number;
     /** URL-safe slug (e.g., "league", "valorant") */
     slug: string;
@@ -170,7 +185,7 @@ interface GamePack<TMatch extends BaseMatch = BaseMatch, TLiveMatch = unknown> {
     /** Component showing asset loading status (optional) */
     AssetsStatus?: ComponentType;
     /** Type guard to check if a match belongs to this game */
-    isMatch: (match: BaseMatch) => match is TMatch;
+    isMatch: (match: BaseMatch<unknown>) => match is TMatch;
     /**
      * Initialize game assets.
      * @deprecated Use resources.init() instead
@@ -182,6 +197,7 @@ interface GamePack<TMatch extends BaseMatch = BaseMatch, TLiveMatch = unknown> {
  * Uses unknown for flexibility when loading packs dynamically.
  */
 interface RuntimeGamePack {
+    packId: string;
     gameId: number;
     slug: string;
     MatchCard: ComponentType<{
@@ -195,7 +211,7 @@ interface RuntimeGamePack {
     resources?: GamePackResources;
     utilities?: GamePackUtilities;
     AssetsStatus?: ComponentType;
-    isMatch: (match: BaseMatch) => boolean;
+    isMatch: (match: BaseMatch<unknown>) => boolean;
 }
 /**
  * Game definition from the games registry.
@@ -242,9 +258,11 @@ interface GameStatus {
  * Match data returned when a game session ends.
  */
 interface MatchData {
+    /** Pack UUID (stable internal identifier) */
+    packId?: string;
     /** Game slug (e.g., "league") */
     gameSlug: string;
-    /** Game ID */
+    /** Game ID (for backwards compatibility) */
     gameId: number;
     /** Match result */
     result: "win" | "loss" | "remake" | "unknown";

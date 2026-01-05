@@ -11,10 +11,11 @@ import type { PackCacheAPI, PackContext } from "./types";
 import type { PackToHostMessage, HostToPackMessage, BridgeState } from "./bridge";
 
 // Bridge state (module-scoped, runs in iframe)
-const bridgeState: BridgeState = {
+const bridgeState: BridgeState & { packId: string } = {
   messageId: 0,
   pending: new Map(),
   initialized: false,
+  packId: "",
   gameId: 0,
 };
 
@@ -122,6 +123,7 @@ export function getSandboxedCacheAPI(): PackCacheAPI {
  */
 export function getSandboxedPackContext(): PackContext {
   return {
+    packId: bridgeState.packId,
     gameId: bridgeState.gameId,
     cache: getSandboxedCacheAPI(),
   };

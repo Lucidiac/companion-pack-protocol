@@ -20,6 +20,7 @@ const noopCache: PackCacheAPI = {
 
 // Default context value
 const defaultContext: PackContext = {
+  packId: "",
   gameId: 0,
   cache: noopCache,
 };

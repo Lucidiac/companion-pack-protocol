@@ -12,6 +12,7 @@ var noopCache = {
   clear: async () => ({ success: false, error: "Context not provided" })
 };
 var defaultContext = {
+  packId: "",
   gameId: 0,
   cache: noopCache
 };
@@ -28,6 +29,7 @@ var bridgeState = {
   messageId: 0,
   pending: /* @__PURE__ */ new Map(),
   initialized: false,
+  packId: "",
   gameId: 0
 };
 function bridgeCall(type, payload) {
@@ -93,6 +95,7 @@ function getSandboxedCacheAPI() {
 }
 function getSandboxedPackContext() {
   return {
+    packId: bridgeState.packId,
     gameId: bridgeState.gameId,
     cache: getSandboxedCacheAPI()
   };
