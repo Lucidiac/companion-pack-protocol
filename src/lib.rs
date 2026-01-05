@@ -62,5 +62,9 @@ pub use commands::GamepackCommand;
 pub use handler::{GamepackError, GamepackHandler, GamepackResult};
 pub use responses::GamepackResponse;
 pub use runner::run_gamepack;
-pub use types::{GameEvent, GameStatus, InitResponse, MatchData};
+pub use types::{
+    GameEvent, GameStatus, GetMatchTimelineRequest, GetMatchTimelineResponse, InitResponse,
+    IsMatchInProgressRequest, IsMatchInProgressResponse, MatchData, MatchDataMessage,
+    TimelineEntry,
+};
 pub use version::PROTOCOL_VERSION;

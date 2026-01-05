@@ -142,6 +142,30 @@ fn dispatch_command<H: GamepackHandler>(handler: &mut H, cmd: GamepackCommand) -
                 icon_url,
             }
         }
+
+        GamepackCommand::IsMatchInProgress {
+            subpack,
+            external_match_id,
+            ..
+        } => {
+            let response = handler.is_match_in_progress(subpack, &external_match_id);
+            GamepackResponse::MatchInProgressStatus {
+                request_id,
+                still_playing: response.still_playing,
+                set_complete: response.set_complete,
+            }
+        }
+
+        GamepackCommand::GetMatchTimeline { .. } => {
+            // This command is typically sent FROM the daemon TO provide timeline data,
+            // but it can also be used for the gamepack to request its own data back.
+            // Default implementation returns empty - daemon handles this.
+            GamepackResponse::MatchTimeline {
+                request_id,
+                found: false,
+                entries: vec![],
+            }
+        }
     }
 }
 

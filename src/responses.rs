@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::GameEvent;
+use crate::types::{GameEvent, MatchDataMessage, TimelineEntry};
 
 /// Responses from a gamepack to the main daemon.
 ///
@@ -89,10 +89,45 @@ pub enum GamepackResponse {
         /// The resolved icon URL, or None if no icon could be found
         icon_url: Option<String>,
     },
+
+    // ========================================================================
+    // STALE MATCH RECOVERY
+    // ========================================================================
+
+    /// Response to IsMatchInProgress command.
+    MatchInProgressStatus {
+        request_id: String,
+        /// Whether the game is actually still running
+        still_playing: bool,
+        /// If !still_playing, optionally provide SetComplete message with final stats
+        #[serde(skip_serializing_if = "Option::is_none")]
+        set_complete: Option<MatchDataMessage>,
+    },
+
+    /// Response to GetMatchTimeline command.
+    MatchTimeline {
+        request_id: String,
+        /// Whether the match was found
+        found: bool,
+        /// Timeline entries (empty if not found)
+        entries: Vec<TimelineEntry>,
+    },
+
+    // ========================================================================
+    // MATCH DATA (gamepack → daemon, unsolicited)
+    // ========================================================================
+
+    /// Write match stats (creates match if doesn't exist).
+    /// This is an unsolicited message from gamepack to daemon.
+    WriteMatchData {
+        /// The match data message to process
+        message: MatchDataMessage,
+    },
 }
 
 impl GamepackResponse {
     /// Get the request_id from any response variant.
+    /// Returns empty string for unsolicited messages (WriteMatchData).
     pub fn request_id(&self) -> &str {
         match self {
             Self::Initialized { request_id, .. } => request_id,
@@ -105,6 +140,10 @@ impl GamepackResponse {
             Self::Error { request_id, .. } => request_id,
             Self::ShutdownComplete { request_id, .. } => request_id,
             Self::EventIconResolved { request_id, .. } => request_id,
+            Self::MatchInProgressStatus { request_id, .. } => request_id,
+            Self::MatchTimeline { request_id, .. } => request_id,
+            // WriteMatchData is unsolicited, no request_id
+            Self::WriteMatchData { .. } => "",
         }
     }
 

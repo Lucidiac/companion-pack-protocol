@@ -52,6 +52,38 @@ pub enum GamepackCommand {
         /// The event key to resolve an icon for (e.g., "ChampionKill", "DragonKill")
         event_key: String,
     },
+
+    // ========================================================================
+    // STALE MATCH RECOVERY
+    // ========================================================================
+
+    /// Check if a match is still in progress.
+    /// Sent during stale match recovery (daemon startup, gamepack reload).
+    /// Expected response: `MatchInProgressStatus`
+    IsMatchInProgress {
+        request_id: String,
+        /// Subpack index (0 = default)
+        subpack: u8,
+        /// Game's native match ID
+        external_match_id: String,
+    },
+
+    /// Request match timeline data.
+    /// Used for recovery when a gamepack needs to reconstruct match state.
+    /// Expected response: `MatchTimeline`
+    GetMatchTimeline {
+        request_id: String,
+        /// Subpack index (0 = default)
+        subpack: u8,
+        /// Game's native match ID
+        external_match_id: String,
+        /// Filter by entry types (None = all types)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        entry_types: Option<Vec<String>>,
+        /// Max entries to return (latest N)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        limit: Option<u32>,
+    },
 }
 
 impl GamepackCommand {
@@ -67,6 +99,8 @@ impl GamepackCommand {
             Self::SessionEnd { request_id, .. } => request_id,
             Self::Shutdown { request_id } => request_id,
             Self::ResolveEventIcon { request_id, .. } => request_id,
+            Self::IsMatchInProgress { request_id, .. } => request_id,
+            Self::GetMatchTimeline { request_id, .. } => request_id,
         }
     }
 }

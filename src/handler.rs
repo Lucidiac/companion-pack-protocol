@@ -1,6 +1,6 @@
 //! Trait for implementing gamepack handlers.
 
-use crate::types::{GameEvent, GameStatus, InitResponse, MatchData};
+use crate::types::{GameEvent, GameStatus, InitResponse, IsMatchInProgressResponse, MatchData};
 
 /// Result type for gamepack operations.
 pub type GamepackResult<T> = Result<T, GamepackError>;
@@ -163,5 +163,23 @@ pub trait GamepackHandler {
     /// Default implementation returns `None`.
     fn resolve_event_icon(&self, _event_key: &str) -> Option<String> {
         None
+    }
+
+    /// Check if a match is still in progress.
+    ///
+    /// Called during stale match recovery (daemon startup, gamepack reload).
+    /// The gamepack should check if the game is actually still running for
+    /// the given match.
+    ///
+    /// If the game has ended, the gamepack can optionally provide final stats
+    /// by including a `SetComplete` message in the response.
+    ///
+    /// Default implementation indicates the game is not running.
+    fn is_match_in_progress(
+        &self,
+        _subpack: u8,
+        _external_match_id: &str,
+    ) -> IsMatchInProgressResponse {
+        IsMatchInProgressResponse::ended()
     }
 }
