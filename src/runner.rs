@@ -6,8 +6,9 @@ use std::sync::Mutex;
 use crate::commands::GamepackCommand;
 use crate::handler::GamepackHandler;
 use crate::responses::GamepackResponse;
-use crate::types::{InitResponse, MatchDataMessage};
+use crate::types::{GameEvent, InitResponse, MatchDataMessage, Moment};
 use crate::version::PROTOCOL_VERSION;
+use std::collections::HashMap;
 
 /// Global stdout lock for thread-safe message emission.
 /// This is used by `emit_match_data` to send unsolicited messages.
@@ -19,24 +20,22 @@ static STDOUT_LOCK: Mutex<()> = Mutex::new(());
 /// to the daemon. Messages are thread-safe and will be properly interleaved
 /// with command responses.
 ///
+/// For convenience, use the typed helpers:
+/// - [`emit_statistics`] for WriteStatistics
+/// - [`emit_game_events`] for WriteGameEvents
+/// - [`emit_moments`] for WriteMoments
+///
 /// # Example
 ///
 /// ```rust,ignore
-/// use companion_pack_protocol::{emit_match_data, MatchDataMessage};
+/// use companion_pack_protocol::{emit_match_data, MatchDataMessage, SummarySource};
 /// use std::collections::HashMap;
-///
-/// // Emit stats during gameplay
-/// emit_match_data(MatchDataMessage::write_stats(
-///     0,  // subpack 0 for main game
-///     "match123",
-///     HashMap::from([("kills".to_string(), json!(5))]),
-/// ));
 ///
 /// // Mark match as complete
 /// emit_match_data(MatchDataMessage::set_complete(
 ///     0,
 ///     "match123",
-///     "api",
+///     SummarySource::Api,
 /// ));
 /// ```
 pub fn emit_match_data(message: MatchDataMessage) {
@@ -48,6 +47,103 @@ pub fn emit_match_data(message: MatchDataMessage) {
         let _ = writeln!(stdout, "{}", json);
         let _ = stdout.flush();
     }
+}
+
+/// Emit statistics to the daemon.
+///
+/// Statistics are polled game state (KDA, CS, gold, etc.) that get:
+/// 1. Stored to timeline with delta compression
+/// 2. UPSERTed to the summary table
+///
+/// Call this periodically during gameplay when stats change.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use companion_pack_protocol::emit_statistics;
+/// use std::collections::HashMap;
+/// use serde_json::json;
+///
+/// let mut stats = HashMap::new();
+/// stats.insert("kills".to_string(), json!(5));
+/// stats.insert("deaths".to_string(), json!(2));
+/// stats.insert("cs".to_string(), json!(150));
+///
+/// emit_statistics(0, "match123", 1234.5, stats);
+/// ```
+pub fn emit_statistics(
+    subpack: u8,
+    external_match_id: impl Into<String>,
+    game_time_secs: f64,
+    stats: HashMap<String, serde_json::Value>,
+) {
+    emit_match_data(MatchDataMessage::write_statistics(
+        subpack,
+        external_match_id,
+        game_time_secs,
+        stats,
+    ));
+}
+
+/// Emit game events to the daemon.
+///
+/// Events are discrete occurrences (kills, objectives, etc.) that get
+/// stored to the timeline.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use companion_pack_protocol::{emit_game_events, GameEvent};
+/// use serde_json::json;
+///
+/// let events = vec![
+///     GameEvent::new("ChampionKill", 120.0, json!({"killer": "Player1", "victim": "Enemy1"})),
+///     GameEvent::new("DragonKill", 125.0, json!({"team": "blue", "dragon": "infernal"})),
+/// ];
+///
+/// emit_game_events(0, "match123", events);
+/// ```
+pub fn emit_game_events(
+    subpack: u8,
+    external_match_id: impl Into<String>,
+    events: Vec<GameEvent>,
+) {
+    emit_match_data(MatchDataMessage::write_game_events(
+        subpack,
+        external_match_id,
+        events,
+    ));
+}
+
+/// Emit moments to the daemon.
+///
+/// Moments are recordable things that might trigger a clip. The daemon will:
+/// 1. Store to timeline with entry_type='moment'
+/// 2. Check trigger configuration
+/// 3. Fire recording if trigger is enabled
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use companion_pack_protocol::{emit_moments, Moment};
+/// use serde_json::json;
+///
+/// let moments = vec![
+///     Moment::new("pentakill", 1500.0, json!({"kills": 5, "time_span_secs": 10.0})),
+/// ];
+///
+/// emit_moments(0, "match123", moments);
+/// ```
+pub fn emit_moments(
+    subpack: u8,
+    external_match_id: impl Into<String>,
+    moments: Vec<Moment>,
+) {
+    emit_match_data(MatchDataMessage::write_moments(
+        subpack,
+        external_match_id,
+        moments,
+    ));
 }
 
 /// Run the gamepack main loop with the provided handler.

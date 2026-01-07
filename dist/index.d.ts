@@ -10,8 +10,52 @@ import 'vite';
  */
 
 /**
+ * Core match data from the `matches` table.
+ *
+ * This is the known structure that the host can display, sort, and filter.
+ * All fields come from the daemon's core `matches` table.
+ */
+interface CoreMatchData {
+    /** Unique match identifier (UUID) */
+    id: string;
+    /** Pack UUID (stable internal identifier) */
+    packId: string;
+    /** Subpack index (0 = default, 1+ = additional subpacks like TFT) */
+    subpack: number;
+    /** Game's native match ID (for API lookups) */
+    externalMatchId: string | null;
+    /** ISO timestamp of when the match was played */
+    playedAt: string;
+    /** Match duration in seconds (null until complete) */
+    durationSecs: number | null;
+    /** Match result */
+    result: "win" | "loss" | "remake" | null;
+    /** Whether the match is still in progress */
+    isInProgress: boolean;
+    /** Where final stats came from: "api" | "live_fallback" | null (pending) */
+    summarySource: string | null;
+    /** ISO timestamp of when this record was created */
+    createdAt: string;
+}
+/**
+ * Full match data passed to pack MatchCard components.
+ *
+ * Separates known core data from opaque pack-specific details.
+ * - `core`: Known structure from matches table (host can display/sort/filter)
+ * - `details`: Pack-specific data (host passes through, pack renders)
+ */
+interface MatchWithDetails<TDetails = Record<string, unknown>> {
+    /** Core match data from matches table */
+    core: CoreMatchData;
+    /** Pack-specific match details (parsed, not JSON strings) */
+    details: TDetails;
+}
+/**
  * Base match type that all game packs extend.
  * Contains only fields common to all games.
+ *
+ * @deprecated Use MatchWithDetails<TDetails> instead for clearer separation
+ * of core vs pack-specific data.
  *
  * Game-specific data is stored in the `details` field as an opaque JSON object.
  * Each pack defines its own details interface and is responsible for parsing it.
@@ -404,4 +448,4 @@ declare function getSandboxedPackContext(): PackContext;
  */
 declare function useSandboxedCache(): PackCacheAPI;
 
-export { type BaseMatch, type BridgeState, type GameDefinition, type GameEvent, type GamePack, type GamePackResources, type GamePackUtilities, type GameStatus, type HostInitMessage, type HostRenderMessage, type HostResponseMessage, type HostToPackMessage, type LiveMatchCardProps, type MatchCardProps, type MatchData, type PackCacheAPI, type PackCacheClearMessage, type PackCacheExistsMessage, type PackCacheGetSizeMessage, type PackCacheReadMessage, type PackCacheWriteMessage, type PackContext, PackContextReact, type PackReadyMessage, type PackToHostMessage, type PendingRequest, type ResourceState, type RuntimeGamePack, getSandboxedCacheAPI, getSandboxedPackContext, initSandboxRuntime, usePackCache, usePackContext, useSandboxedCache };
+export { type BaseMatch, type BridgeState, type CoreMatchData, type GameDefinition, type GameEvent, type GamePack, type GamePackResources, type GamePackUtilities, type GameStatus, type HostInitMessage, type HostRenderMessage, type HostResponseMessage, type HostToPackMessage, type LiveMatchCardProps, type MatchCardProps, type MatchData, type MatchWithDetails, type PackCacheAPI, type PackCacheClearMessage, type PackCacheExistsMessage, type PackCacheGetSizeMessage, type PackCacheReadMessage, type PackCacheWriteMessage, type PackContext, PackContextReact, type PackReadyMessage, type PackToHostMessage, type PendingRequest, type ResourceState, type RuntimeGamePack, getSandboxedCacheAPI, getSandboxedPackContext, initSandboxRuntime, usePackCache, usePackContext, useSandboxedCache };

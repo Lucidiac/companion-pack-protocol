@@ -61,10 +61,10 @@ pub mod version;
 pub use commands::GamepackCommand;
 pub use handler::{GamepackError, GamepackHandler, GamepackResult};
 pub use responses::GamepackResponse;
-pub use runner::{emit_match_data, run_gamepack};
+pub use runner::{emit_game_events, emit_match_data, emit_moments, emit_statistics, run_gamepack};
 pub use types::{
-    GameEvent, GameStatus, GetMatchTimelineRequest, GetMatchTimelineResponse, InitResponse,
-    IsMatchInProgressRequest, IsMatchInProgressResponse, MatchData, MatchDataMessage,
-    TimelineEntry,
+    EntryType, GameEvent, GameStatus, GetMatchTimelineRequest, GetMatchTimelineResponse,
+    InitResponse, IsMatchInProgressRequest, IsMatchInProgressResponse, MatchData,
+    MatchDataMessage, Moment, SummarySource, TimelineEntry,
 };
 pub use version::PROTOCOL_VERSION;

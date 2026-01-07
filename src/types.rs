@@ -5,6 +5,46 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use strum::{Display, EnumString};
+
+// ============================================================================
+// TYPE-SAFE ENUMS
+// ============================================================================
+
+/// Type of entry in the match timeline.
+///
+/// Used for filtering and ensuring type safety when storing/retrieving timeline data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Display, EnumString)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case", ascii_case_insensitive)]
+pub enum EntryType {
+    /// Discrete game events (kills, objectives, etc.)
+    Event,
+    /// Polled statistics (KDA, CS, gold, etc.)
+    Statistic,
+    /// Recordable moments that may trigger clips
+    Moment,
+}
+
+/// Source of match summary data.
+///
+/// Indicates whether the final stats came from an official API or were
+/// reconstructed from live data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Display, EnumString)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case", ascii_case_insensitive)]
+pub enum SummarySource {
+    /// Stats from official game API (most accurate)
+    Api,
+    /// Stats reconstructed from live data (fallback when API unavailable)
+    LiveFallback,
+}
+
+// ============================================================================
+// GAME EVENTS
+// ============================================================================
 
 /// A game event that can trigger clip capture.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,49 +181,100 @@ impl MatchData {
 }
 
 // ============================================================================
+// MOMENTS
+// ============================================================================
+
+/// A recordable moment that might trigger a clip.
+///
+/// Moments are distinct from events - they represent things worth recording,
+/// not just things that happened. The daemon checks trigger configuration
+/// to decide whether to actually record.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Moment {
+    /// Moment ID (must match a moment defined in config.json or will be auto-registered)
+    pub moment_id: String,
+    /// In-game timestamp in seconds
+    pub game_time_secs: f64,
+    /// Moment-specific data (context for the clip)
+    pub data: serde_json::Value,
+}
+
+impl Moment {
+    /// Create a new moment.
+    pub fn new(moment_id: impl Into<String>, game_time_secs: f64, data: serde_json::Value) -> Self {
+        Self {
+            moment_id: moment_id.into(),
+            game_time_secs,
+            data,
+        }
+    }
+}
+
+// ============================================================================
 // MATCH DATA MESSAGES (Subpack Model)
 // ============================================================================
 
 /// Gamepack → Daemon: Write match data.
 ///
-/// These messages allow gamepacks to emit match data during gameplay.
-/// Each message includes a `subpack` field for multi-game packs.
+/// These are the three unsolicited messages a gamepack can send to the daemon
+/// during gameplay, plus SetComplete to mark matches finished.
+///
+/// **Data Flow:**
+/// - `WriteStatistics` → Timeline (delta) + Summary (UPSERT)
+/// - `WriteGameEvents` → Timeline (events)
+/// - `WriteMoments` → Timeline (moments) + Trigger check
+/// - `SetComplete` → Mark `is_in_progress=0`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum MatchDataMessage {
-    /// Create or update match with stats (creates match if doesn't exist).
+    /// Write statistics to timeline (delta compressed) AND summary table (UPSERT).
     ///
+    /// This is the primary way to emit polled game state during gameplay.
     /// The daemon will:
     /// 1. Create match row if it doesn't exist (lazy creation)
-    /// 2. UPSERT stats to the summary table (`p{guid}_{subpack}_match_details`)
-    WriteStats {
+    /// 2. Store to timeline with delta compression (only changed fields)
+    /// 3. UPSERT to summary table (`p{guid}_{subpack}_match_details`)
+    WriteStatistics {
         /// Subpack index (0 = default, 1+ = additional subpacks)
         subpack: u8,
         /// Game's native match ID (used for deduplication and API lookups)
         external_match_id: String,
-        /// When the match started (ISO 8601)
+        /// When the match started (ISO 8601) - only needed on first write
         #[serde(skip_serializing_if = "Option::is_none")]
         played_at: Option<String>,
-        /// Match duration in seconds
-        #[serde(skip_serializing_if = "Option::is_none")]
-        duration_secs: Option<i32>,
-        /// Match result: "win" | "loss" | "draw"
-        #[serde(skip_serializing_if = "Option::is_none")]
-        result: Option<String>,
+        /// In-game timestamp in seconds
+        game_time_secs: f64,
         /// Stats to write (keys must match columns declared in subpack's schema)
         stats: HashMap<String, serde_json::Value>,
     },
 
-    /// Append events to match timeline.
+    /// Write game events to timeline.
     ///
-    /// Events are saved to `p{guid}_{subpack}_match_timeline` with entry_type='event'.
-    WriteEvents {
+    /// Events are discrete occurrences (kills, objectives, etc.).
+    /// Saved to `p{guid}_{subpack}_match_timeline` with entry_type='event'.
+    WriteGameEvents {
         /// Subpack index (0 = default, 1+ = additional subpacks)
         subpack: u8,
         /// Game's native match ID
         external_match_id: String,
         /// Events to append
         events: Vec<GameEvent>,
+    },
+
+    /// Write moments to timeline and check triggers.
+    ///
+    /// Moments are recordable things that might trigger a clip.
+    /// The daemon will:
+    /// 1. Store to timeline with entry_type='moment'
+    /// 2. Check trigger configuration for each moment
+    /// 3. Fire recording if trigger is enabled
+    WriteMoments {
+        /// Subpack index (0 = default, 1+ = additional subpacks)
+        subpack: u8,
+        /// Game's native match ID
+        external_match_id: String,
+        /// Moments to process
+        moments: Vec<Moment>,
     },
 
     /// Mark match as complete (sets is_in_progress=0).
@@ -196,8 +287,8 @@ pub enum MatchDataMessage {
         subpack: u8,
         /// Game's native match ID
         external_match_id: String,
-        /// Where the final stats came from: "api" | "live_fallback"
-        summary_source: String,
+        /// Where the final stats came from
+        summary_source: SummarySource,
         /// Optional final stats to overwrite summary table
         #[serde(skip_serializing_if = "Option::is_none")]
         final_stats: Option<HashMap<String, serde_json::Value>>,
@@ -205,32 +296,62 @@ pub enum MatchDataMessage {
 }
 
 impl MatchDataMessage {
-    /// Create a WriteStats message.
-    pub fn write_stats(
+    /// Create a WriteStatistics message.
+    pub fn write_statistics(
         subpack: u8,
         external_match_id: impl Into<String>,
+        game_time_secs: f64,
         stats: HashMap<String, serde_json::Value>,
     ) -> Self {
-        Self::WriteStats {
+        Self::WriteStatistics {
             subpack,
             external_match_id: external_match_id.into(),
             played_at: None,
-            duration_secs: None,
-            result: None,
+            game_time_secs,
             stats,
         }
     }
 
-    /// Create a WriteEvents message.
-    pub fn write_events(
+    /// Create a WriteStatistics message with played_at timestamp.
+    pub fn write_statistics_with_time(
+        subpack: u8,
+        external_match_id: impl Into<String>,
+        played_at: impl Into<String>,
+        game_time_secs: f64,
+        stats: HashMap<String, serde_json::Value>,
+    ) -> Self {
+        Self::WriteStatistics {
+            subpack,
+            external_match_id: external_match_id.into(),
+            played_at: Some(played_at.into()),
+            game_time_secs,
+            stats,
+        }
+    }
+
+    /// Create a WriteGameEvents message.
+    pub fn write_game_events(
         subpack: u8,
         external_match_id: impl Into<String>,
         events: Vec<GameEvent>,
     ) -> Self {
-        Self::WriteEvents {
+        Self::WriteGameEvents {
             subpack,
             external_match_id: external_match_id.into(),
             events,
+        }
+    }
+
+    /// Create a WriteMoments message.
+    pub fn write_moments(
+        subpack: u8,
+        external_match_id: impl Into<String>,
+        moments: Vec<Moment>,
+    ) -> Self {
+        Self::WriteMoments {
+            subpack,
+            external_match_id: external_match_id.into(),
+            moments,
         }
     }
 
@@ -238,12 +359,12 @@ impl MatchDataMessage {
     pub fn set_complete(
         subpack: u8,
         external_match_id: impl Into<String>,
-        summary_source: impl Into<String>,
+        summary_source: SummarySource,
     ) -> Self {
         Self::SetComplete {
             subpack,
             external_match_id: external_match_id.into(),
-            summary_source: summary_source.into(),
+            summary_source,
             final_stats: None,
         }
     }
@@ -252,13 +373,13 @@ impl MatchDataMessage {
     pub fn set_complete_with_stats(
         subpack: u8,
         external_match_id: impl Into<String>,
-        summary_source: impl Into<String>,
+        summary_source: SummarySource,
         final_stats: HashMap<String, serde_json::Value>,
     ) -> Self {
         Self::SetComplete {
             subpack,
             external_match_id: external_match_id.into(),
-            summary_source: summary_source.into(),
+            summary_source,
             final_stats: Some(final_stats),
         }
     }
@@ -326,8 +447,8 @@ impl IsMatchInProgressResponse {
 /// chronological order.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineEntry {
-    /// Entry type: "event" | "statistic" | "moment"
-    pub entry_type: String,
+    /// Entry type (event, statistic, or moment)
+    pub entry_type: EntryType,
     /// Entry key: event type, "stats", or moment ID
     pub entry_key: String,
     /// In-game timestamp in seconds
@@ -350,7 +471,7 @@ impl TimelineEntry {
         data: serde_json::Value,
     ) -> Self {
         Self {
-            entry_type: "event".to_string(),
+            entry_type: EntryType::Event,
             entry_key: event_type.into(),
             game_time_secs,
             captured_at: captured_at.into(),
@@ -366,7 +487,7 @@ impl TimelineEntry {
         changed_fields: serde_json::Value,
     ) -> Self {
         Self {
-            entry_type: "statistic".to_string(),
+            entry_type: EntryType::Statistic,
             entry_key: "stats".to_string(),
             game_time_secs,
             captured_at: captured_at.into(),
@@ -384,7 +505,7 @@ impl TimelineEntry {
         trigger_fired: bool,
     ) -> Self {
         Self {
-            entry_type: "moment".to_string(),
+            entry_type: EntryType::Moment,
             entry_key: moment_id.into(),
             game_time_secs,
             captured_at: captured_at.into(),
@@ -418,4 +539,392 @@ pub struct GetMatchTimelineResponse {
     pub found: bool,
     /// Timeline entries (empty if not found)
     pub entries: Vec<TimelineEntry>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::str::FromStr;
+
+    // ========================================================================
+    // EntryType Tests
+    // ========================================================================
+
+    #[test]
+    fn entry_type_serializes_to_snake_case() {
+        assert_eq!(
+            serde_json::to_string(&EntryType::Event).unwrap(),
+            "\"event\""
+        );
+        assert_eq!(
+            serde_json::to_string(&EntryType::Statistic).unwrap(),
+            "\"statistic\""
+        );
+        assert_eq!(
+            serde_json::to_string(&EntryType::Moment).unwrap(),
+            "\"moment\""
+        );
+    }
+
+    #[test]
+    fn entry_type_deserializes_from_snake_case() {
+        assert_eq!(
+            serde_json::from_str::<EntryType>("\"event\"").unwrap(),
+            EntryType::Event
+        );
+        assert_eq!(
+            serde_json::from_str::<EntryType>("\"statistic\"").unwrap(),
+            EntryType::Statistic
+        );
+        assert_eq!(
+            serde_json::from_str::<EntryType>("\"moment\"").unwrap(),
+            EntryType::Moment
+        );
+    }
+
+    #[test]
+    fn entry_type_display_is_snake_case() {
+        assert_eq!(EntryType::Event.to_string(), "event");
+        assert_eq!(EntryType::Statistic.to_string(), "statistic");
+        assert_eq!(EntryType::Moment.to_string(), "moment");
+    }
+
+    #[test]
+    fn entry_type_from_str_case_insensitive() {
+        assert_eq!(EntryType::from_str("EVENT").unwrap(), EntryType::Event);
+        assert_eq!(EntryType::from_str("event").unwrap(), EntryType::Event);
+        assert_eq!(EntryType::from_str("Event").unwrap(), EntryType::Event);
+    }
+
+    #[test]
+    fn entry_type_round_trips() {
+        for entry_type in [EntryType::Event, EntryType::Statistic, EntryType::Moment] {
+            let json = serde_json::to_string(&entry_type).unwrap();
+            let back: EntryType = serde_json::from_str(&json).unwrap();
+            assert_eq!(entry_type, back);
+        }
+    }
+
+    // ========================================================================
+    // SummarySource Tests
+    // ========================================================================
+
+    #[test]
+    fn summary_source_serializes_to_snake_case() {
+        assert_eq!(
+            serde_json::to_string(&SummarySource::Api).unwrap(),
+            "\"api\""
+        );
+        assert_eq!(
+            serde_json::to_string(&SummarySource::LiveFallback).unwrap(),
+            "\"live_fallback\""
+        );
+    }
+
+    #[test]
+    fn summary_source_deserializes_from_snake_case() {
+        assert_eq!(
+            serde_json::from_str::<SummarySource>("\"api\"").unwrap(),
+            SummarySource::Api
+        );
+        assert_eq!(
+            serde_json::from_str::<SummarySource>("\"live_fallback\"").unwrap(),
+            SummarySource::LiveFallback
+        );
+    }
+
+    #[test]
+    fn summary_source_display_is_snake_case() {
+        assert_eq!(SummarySource::Api.to_string(), "api");
+        assert_eq!(SummarySource::LiveFallback.to_string(), "live_fallback");
+    }
+
+    #[test]
+    fn summary_source_round_trips() {
+        for source in [SummarySource::Api, SummarySource::LiveFallback] {
+            let json = serde_json::to_string(&source).unwrap();
+            let back: SummarySource = serde_json::from_str(&json).unwrap();
+            assert_eq!(source, back);
+        }
+    }
+
+    // ========================================================================
+    // GameEvent Tests
+    // ========================================================================
+
+    #[test]
+    fn game_event_new_creates_with_defaults() {
+        let event = GameEvent::new("ChampionKill", 100.5, json!({"killer": "Player1"}));
+
+        assert_eq!(event.event_type, "ChampionKill");
+        assert_eq!(event.timestamp_secs, 100.5);
+        assert_eq!(event.data, json!({"killer": "Player1"}));
+        assert_eq!(event.pre_capture_secs, None);
+        assert_eq!(event.post_capture_secs, None);
+    }
+
+    #[test]
+    fn game_event_with_capture_times() {
+        let event = GameEvent::new("DragonKill", 500.0, json!({}))
+            .with_pre_capture(15.0)
+            .with_post_capture(10.0);
+
+        assert_eq!(event.pre_capture_secs, Some(15.0));
+        assert_eq!(event.post_capture_secs, Some(10.0));
+    }
+
+    #[test]
+    fn game_event_serializes_correctly() {
+        let event = GameEvent::new("ChampionKill", 100.5, json!({"killer": "Player1"}));
+        let json = serde_json::to_string(&event).unwrap();
+
+        assert!(json.contains("\"event_type\":\"ChampionKill\""));
+        assert!(json.contains("\"timestamp_secs\":100.5"));
+        assert!(!json.contains("pre_capture_secs")); // None should be skipped
+    }
+
+    #[test]
+    fn game_event_round_trips() {
+        let event = GameEvent::new("ChampionKill", 100.5, json!({"killer": "Player1"}))
+            .with_pre_capture(10.0);
+        let json = serde_json::to_string(&event).unwrap();
+        let back: GameEvent = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(event.event_type, back.event_type);
+        assert!((event.timestamp_secs - back.timestamp_secs).abs() < 0.001);
+        assert_eq!(event.pre_capture_secs, back.pre_capture_secs);
+    }
+
+    // ========================================================================
+    // Moment Tests
+    // ========================================================================
+
+    #[test]
+    fn moment_new_creates_correctly() {
+        let moment = Moment::new("pentakill", 1500.0, json!({"kills": 5}));
+
+        assert_eq!(moment.moment_id, "pentakill");
+        assert_eq!(moment.game_time_secs, 1500.0);
+        assert_eq!(moment.data, json!({"kills": 5}));
+    }
+
+    #[test]
+    fn moment_round_trips() {
+        let moment = Moment::new("death", 250.0, json!({"killer": "Enemy1"}));
+        let json = serde_json::to_string(&moment).unwrap();
+        let back: Moment = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(moment.moment_id, back.moment_id);
+        assert!((moment.game_time_secs - back.game_time_secs).abs() < 0.001);
+        assert_eq!(moment.data, back.data);
+    }
+
+    // ========================================================================
+    // MatchDataMessage Tests
+    // ========================================================================
+
+    #[test]
+    fn write_statistics_serializes_with_type_tag() {
+        let msg = MatchDataMessage::write_statistics(
+            0,
+            "match123",
+            100.0,
+            [("kills".to_string(), json!(5))].into_iter().collect(),
+        );
+        let json = serde_json::to_string(&msg).unwrap();
+
+        assert!(json.contains("\"type\":\"write_statistics\""));
+        assert!(json.contains("\"subpack\":0"));
+        assert!(json.contains("\"external_match_id\":\"match123\""));
+        assert!(json.contains("\"game_time_secs\":100"));
+    }
+
+    #[test]
+    fn write_game_events_serializes_with_type_tag() {
+        let events = vec![GameEvent::new("ChampionKill", 100.0, json!({}))];
+        let msg = MatchDataMessage::write_game_events(0, "match123", events);
+        let json = serde_json::to_string(&msg).unwrap();
+
+        assert!(json.contains("\"type\":\"write_game_events\""));
+        assert!(json.contains("\"events\""));
+    }
+
+    #[test]
+    fn write_moments_serializes_with_type_tag() {
+        let moments = vec![Moment::new("pentakill", 1500.0, json!({}))];
+        let msg = MatchDataMessage::write_moments(0, "match123", moments);
+        let json = serde_json::to_string(&msg).unwrap();
+
+        assert!(json.contains("\"type\":\"write_moments\""));
+        assert!(json.contains("\"moments\""));
+    }
+
+    #[test]
+    fn set_complete_serializes_with_type_tag() {
+        let msg = MatchDataMessage::set_complete(0, "match123", SummarySource::Api);
+        let json = serde_json::to_string(&msg).unwrap();
+
+        assert!(json.contains("\"type\":\"set_complete\""));
+        assert!(json.contains("\"summary_source\":\"api\""));
+    }
+
+    #[test]
+    fn match_data_message_round_trips_all_variants() {
+        let messages: Vec<MatchDataMessage> = vec![
+            MatchDataMessage::write_statistics(0, "m1", 100.0, HashMap::new()),
+            MatchDataMessage::write_game_events(
+                0,
+                "m1",
+                vec![GameEvent::new("Kill", 50.0, json!({}))],
+            ),
+            MatchDataMessage::write_moments(0, "m1", vec![Moment::new("death", 75.0, json!({}))]),
+            MatchDataMessage::set_complete(0, "m1", SummarySource::Api),
+            MatchDataMessage::set_complete_with_stats(
+                0,
+                "m1",
+                SummarySource::LiveFallback,
+                [("kills".to_string(), json!(10))].into_iter().collect(),
+            ),
+        ];
+
+        for msg in messages {
+            let json = serde_json::to_string(&msg).unwrap();
+            let back: MatchDataMessage = serde_json::from_str(&json).unwrap();
+            // Round-trip should produce equivalent JSON
+            let json2 = serde_json::to_string(&back).unwrap();
+            assert_eq!(json, json2);
+        }
+    }
+
+    // ========================================================================
+    // TimelineEntry Tests
+    // ========================================================================
+
+    #[test]
+    fn timeline_entry_event_creates_correctly() {
+        let entry = TimelineEntry::event(
+            "ChampionKill",
+            100.0,
+            "2024-01-15T10:30:00Z",
+            json!({"killer": "Player1"}),
+        );
+
+        assert_eq!(entry.entry_type, EntryType::Event);
+        assert_eq!(entry.entry_key, "ChampionKill");
+        assert_eq!(entry.trigger_fired, None);
+    }
+
+    #[test]
+    fn timeline_entry_statistic_creates_correctly() {
+        let entry = TimelineEntry::statistic(
+            100.0,
+            "2024-01-15T10:30:00Z",
+            json!({"kills": 5}),
+        );
+
+        assert_eq!(entry.entry_type, EntryType::Statistic);
+        assert_eq!(entry.entry_key, "stats");
+        assert_eq!(entry.trigger_fired, None);
+    }
+
+    #[test]
+    fn timeline_entry_moment_creates_correctly() {
+        let entry = TimelineEntry::moment(
+            "pentakill",
+            1500.0,
+            "2024-01-15T10:55:00Z",
+            json!({"kills": 5}),
+            true,
+        );
+
+        assert_eq!(entry.entry_type, EntryType::Moment);
+        assert_eq!(entry.entry_key, "pentakill");
+        assert_eq!(entry.trigger_fired, Some(true));
+    }
+
+    #[test]
+    fn timeline_entry_round_trips() {
+        let entry = TimelineEntry::event(
+            "ChampionKill",
+            100.0,
+            "2024-01-15T10:30:00Z",
+            json!({"killer": "Player1", "victim": "Enemy1"}),
+        );
+        let json = serde_json::to_string(&entry).unwrap();
+        let back: TimelineEntry = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(entry.entry_type, back.entry_type);
+        assert_eq!(entry.entry_key, back.entry_key);
+        assert_eq!(entry.data, back.data);
+    }
+
+    // ========================================================================
+    // IsMatchInProgressResponse Tests
+    // ========================================================================
+
+    #[test]
+    fn is_match_in_progress_response_still_playing() {
+        let response = IsMatchInProgressResponse::still_playing();
+
+        assert!(response.still_playing);
+        assert!(response.set_complete.is_none());
+    }
+
+    #[test]
+    fn is_match_in_progress_response_ended() {
+        let response = IsMatchInProgressResponse::ended();
+
+        assert!(!response.still_playing);
+        assert!(response.set_complete.is_none());
+    }
+
+    #[test]
+    fn is_match_in_progress_response_ended_with_stats() {
+        let set_complete = MatchDataMessage::set_complete(0, "match123", SummarySource::Api);
+        let response = IsMatchInProgressResponse::ended_with_stats(set_complete);
+
+        assert!(!response.still_playing);
+        assert!(response.set_complete.is_some());
+    }
+
+    // ========================================================================
+    // GameStatus Tests
+    // ========================================================================
+
+    #[test]
+    fn game_status_disconnected() {
+        let status = GameStatus::disconnected();
+
+        assert!(!status.connected);
+        assert_eq!(status.connection_status, "Not connected");
+        assert!(status.game_phase.is_none());
+        assert!(!status.is_in_game);
+    }
+
+    #[test]
+    fn game_status_connected_with_phase() {
+        let status = GameStatus::connected("Connected to client")
+            .with_phase("InProgress")
+            .in_game(true);
+
+        assert!(status.connected);
+        assert_eq!(status.connection_status, "Connected to client");
+        assert_eq!(status.game_phase, Some("InProgress".to_string()));
+        assert!(status.is_in_game);
+    }
+
+    // ========================================================================
+    // MatchData Tests
+    // ========================================================================
+
+    #[test]
+    fn match_data_new_creates_correctly() {
+        let data = MatchData::new("league", 1, "win", json!({"kills": 10}));
+
+        assert_eq!(data.game_slug, "league");
+        assert_eq!(data.game_id, 1);
+        assert_eq!(data.result, "win");
+        assert_eq!(data.details, json!({"kills": 10}));
+    }
 }

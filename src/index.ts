@@ -32,17 +32,26 @@
 
 // Export all types
 export type {
+  // Core match types (new architecture)
+  CoreMatchData,
+  MatchWithDetails,
+  // Legacy match types (backwards compatibility)
   BaseMatch,
+  // Component props
   MatchCardProps,
   LiveMatchCardProps,
+  // Resource management
   ResourceState,
   GamePackResources,
   GamePackUtilities,
+  // Pack context
   PackCacheAPI,
   PackContext,
+  // Pack definitions
   GamePack,
   RuntimeGamePack,
   GameDefinition,
+  // Events and status
   GameEvent,
   GameStatus,
   MatchData,
