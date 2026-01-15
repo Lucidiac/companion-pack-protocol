@@ -1,7 +1,7 @@
 {
-  "name": "@companion/pack-protocol",
+  "name": "@companion/gamepack-runtime",
   "version": "0.1.0",
-  "description": "Types and utilities for building Clip Companion game packs",
+  "description": "Runtime library for building Clip Companion gamepacks",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -39,7 +39,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/clip-companion/companion-pack-protocol"
+    "url": "https://github.com/clip-companion/gamepack-runtime"
   },
   "license": "MIT",
   "keywords": [

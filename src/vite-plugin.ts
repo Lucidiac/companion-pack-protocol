@@ -34,7 +34,7 @@ export interface CompanionPackOptions {
  * // vite.config.ts
  * import { defineConfig } from "vite";
  * import react from "@vitejs/plugin-react";
- * import { companionPack } from "@companion/pack-protocol/vite";
+ * import { companionPack } from "@companion/gamepack-runtime/vite";
  *
  * export default defineConfig({
  *   plugins: [

@@ -1,5 +1,5 @@
 /**
- * @companion/pack-protocol
+ * @companion/gamepack-runtime
  *
  * Types and utilities for building Clip Companion game packs.
  *
@@ -11,8 +11,8 @@
  *
  * @example
  * ```ts
- * import type { GamePack, BaseMatch } from "@companion/pack-protocol";
- * import { usePackCache } from "@companion/pack-protocol";
+ * import type { GamePack, BaseMatch } from "@companion/gamepack-runtime";
+ * import { usePackCache } from "@companion/gamepack-runtime";
  * import { MatchCard } from "./MatchCard";
  *
  * interface MyGameMatch extends BaseMatch {
@@ -86,5 +86,5 @@ export {
 } from "./sandbox-runtime";
 
 // Re-export the Vite plugin for convenience
-// Users can also import directly from "@companion/pack-protocol/vite"
+// Users can also import directly from "@companion/gamepack-runtime/vite"
 export { companionPack, type CompanionPackOptions } from "./vite-plugin";

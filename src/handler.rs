@@ -64,8 +64,8 @@ impl From<&str> for GamepackError {
 /// # Example
 ///
 /// ```rust,ignore
-/// use companion_pack_protocol::{GamepackHandler, GamepackResult};
-/// use companion_pack_protocol::{InitResponse, GameStatus, GameEvent, MatchData};
+/// use gamepack_runtime::{GamepackHandler, GamepackResult};
+/// use gamepack_runtime::{InitResponse, GameStatus, GameEvent, MatchData};
 ///
 /// struct MyGameIntegration { /* ... */ }
 ///

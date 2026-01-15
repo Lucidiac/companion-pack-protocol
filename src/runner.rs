@@ -28,7 +28,7 @@ static STDOUT_LOCK: Mutex<()> = Mutex::new(());
 /// # Example
 ///
 /// ```rust,ignore
-/// use companion_pack_protocol::{emit_match_data, MatchDataMessage, SummarySource};
+/// use gamepack_runtime::{emit_match_data, MatchDataMessage, SummarySource};
 /// use std::collections::HashMap;
 ///
 /// // Mark match as complete
@@ -60,7 +60,7 @@ pub fn emit_match_data(message: MatchDataMessage) {
 /// # Example
 ///
 /// ```rust,ignore
-/// use companion_pack_protocol::emit_statistics;
+/// use gamepack_runtime::emit_statistics;
 /// use std::collections::HashMap;
 /// use serde_json::json;
 ///
@@ -93,7 +93,7 @@ pub fn emit_statistics(
 /// # Example
 ///
 /// ```rust,ignore
-/// use companion_pack_protocol::{emit_game_events, GameEvent};
+/// use gamepack_runtime::{emit_game_events, GameEvent};
 /// use serde_json::json;
 ///
 /// let events = vec![
@@ -125,7 +125,7 @@ pub fn emit_game_events(
 /// # Example
 ///
 /// ```rust,ignore
-/// use companion_pack_protocol::{emit_moments, Moment};
+/// use gamepack_runtime::{emit_moments, Moment};
 /// use serde_json::json;
 ///
 /// let moments = vec![
@@ -155,7 +155,7 @@ pub fn emit_moments(
 /// # Example
 ///
 /// ```rust,ignore
-/// use companion_pack_protocol::{run_gamepack, GamepackHandler};
+/// use gamepack_runtime::{run_gamepack, GamepackHandler};
 ///
 /// struct MyGameIntegration { /* ... */ }
 /// impl GamepackHandler for MyGameIntegration { /* ... */ }

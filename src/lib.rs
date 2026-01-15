@@ -1,9 +1,9 @@
-//! # companion-pack-protocol
+//! # gamepack-runtime
 //!
-//! Protocol types and helpers for building League Companion gamepacks.
+//! Runtime library for building Clip Companion gamepacks.
 //!
 //! This crate provides everything needed to implement a gamepack daemon that
-//! communicates with the main League Companion application via NDJSON over
+//! communicates with the main Clip Companion application via NDJSON over
 //! stdin/stdout.
 //!
 //! ## Quick Start
@@ -12,8 +12,8 @@
 //! 2. Call [`run_gamepack`] with your handler to start the main loop
 //!
 //! ```rust,ignore
-//! use companion_pack_protocol::{run_gamepack, GamepackHandler, GamepackResult};
-//! use companion_pack_protocol::{InitResponse, GameStatus, GameEvent, MatchData};
+//! use gamepack_runtime::{run_gamepack, GamepackHandler, GamepackResult};
+//! use gamepack_runtime::{InitResponse, GameStatus, GameEvent, MatchData};
 //!
 //! struct MyGameIntegration { /* ... */ }
 //!

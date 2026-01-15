@@ -1,10 +1,10 @@
 [package]
-name = "companion-pack-protocol"
+name = "gamepack-runtime"
 version = "0.1.0"
 edition = "2021"
-description = "Protocol types and helpers for League Companion gamepacks"
+description = "Runtime library for building Clip Companion gamepacks"
 license = "MIT"
-repository = "https://github.com/clip-companion/companion-pack-protocol"
+repository = "https://github.com/clip-companion/gamepack-runtime"
 readme = "README.md"
 keywords = ["gamepack", "protocol", "ipc"]
 categories = ["development-tools"]

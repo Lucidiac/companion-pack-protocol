@@ -67,22 +67,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "companion-pack-protocol"
-version = "0.1.0"
-dependencies = [
- "derive_more",
- "garde",
- "insta",
- "proptest",
- "serde",
- "serde_json",
- "strum",
- "test-case",
- "thiserror",
- "tokio-test",
-]
-
-[[package]]
 name = "console"
 version = "0.15.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -177,6 +161,22 @@ name = "futures-core"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05f29059c0c2090612e8d742178b0580d2dc940c837851ad723096f87af6663e"
+
+[[package]]
+name = "gamepack-runtime"
+version = "0.1.0"
+dependencies = [
+ "derive_more",
+ "garde",
+ "insta",
+ "proptest",
+ "serde",
+ "serde_json",
+ "strum",
+ "test-case",
+ "thiserror",
+ "tokio-test",
+]
 
 [[package]]
 name = "garde"
